@@ -185,6 +185,7 @@ namespace LoneEftDmaRadar
                 App.Config.UI.EspPlayerSkeletons = newState;
                 App.Config.UI.EspPlayerBoxes = newState;
                 App.Config.UI.EspPlayerNames = newState;
+                App.Config.UI.EspPlayerDistance = newState;
             }
         }
 
@@ -196,6 +197,7 @@ namespace LoneEftDmaRadar
                 App.Config.UI.EspAISkeletons = newState;
                 App.Config.UI.EspAIBoxes = newState;
                 App.Config.UI.EspAINames = newState;
+                App.Config.UI.EspAIDistance = newState;
             }
         }
 

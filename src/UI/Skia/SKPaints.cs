@@ -135,6 +135,40 @@ namespace LoneEftDmaRadar.UI.Skia
             IsAntialias = true,
         };
 
+        public static SKPaint PaintPMCBear { get; } = new()
+        {
+            Color = SKColors.Red,
+            StrokeWidth = PaintPMC.StrokeWidth,
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true,
+            StrokeJoin = SKStrokeJoin.Round,
+            StrokeCap = SKStrokeCap.Round
+        };
+
+        public static SKPaint TextPMCBear { get; } = new()
+        {
+            Color = SKColors.Red,
+            IsStroke = false,
+            IsAntialias = true,
+        };
+
+        public static SKPaint PaintPMCUsec { get; } = new()
+        {
+            Color = SKColors.Blue,
+            StrokeWidth = PaintPMC.StrokeWidth,
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true,
+            StrokeJoin = SKStrokeJoin.Round,
+            StrokeCap = SKStrokeCap.Round
+        };
+
+        public static SKPaint TextPMCUsec { get; } = new()
+        {
+            Color = SKColors.Blue,
+            IsStroke = false,
+            IsAntialias = true,
+        };
+
         public static SKPaint PaintWatchlist { get; } = new()
         {
             Color = SKColors.HotPink,

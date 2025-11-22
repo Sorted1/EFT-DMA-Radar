@@ -6,6 +6,8 @@ using LoneEftDmaRadar.Tarkov.GameWorld.Player;
 using LoneEftDmaRadar.Tarkov.GameWorld.Player.Helpers;
 using LoneEftDmaRadar.Tarkov.Unity.Structures;
 using System.Drawing;
+using System.Linq;
+using System.Collections.Concurrent;
 using System.Windows.Input;
 using System.Windows.Threading;
 using LoneEftDmaRadar.UI.Skia;
@@ -45,6 +47,18 @@ namespace LoneEftDmaRadar.UI.ESP
         private readonly SKPaint _lootPaint;
         private readonly SKPaint _lootTextPaint;
         private readonly SKPaint _crosshairPaint;
+        private static readonly SKColor[] _espGroupPalette = new SKColor[]
+        {
+            SKColors.MediumSlateBlue,
+            SKColors.MediumSpringGreen,
+            SKColors.CadetBlue,
+            SKColors.MediumOrchid,
+            SKColors.PaleVioletRed,
+            SKColors.SteelBlue,
+            SKColors.DarkSeaGreen,
+            SKColors.Chocolate
+        };
+        private static readonly ConcurrentDictionary<int, SKPaint> _espGroupPaints = new();
 
         private Vector3 _camPos;
         private bool _isFullscreen;
@@ -494,6 +508,10 @@ namespace LoneEftDmaRadar.UI.ESP
             bool drawSkeleton = isAI ? App.Config.UI.EspAISkeletons : App.Config.UI.EspPlayerSkeletons;
             bool drawBox = isAI ? App.Config.UI.EspAIBoxes : App.Config.UI.EspPlayerBoxes;
             bool drawName = isAI ? App.Config.UI.EspAINames : App.Config.UI.EspPlayerNames;
+            bool drawHealth = isAI ? App.Config.UI.EspAIHealth : App.Config.UI.EspPlayerHealth;
+            bool drawDistance = isAI ? App.Config.UI.EspAIDistance : App.Config.UI.EspPlayerDistance;
+            bool drawGroupId = isAI ? App.Config.UI.EspAIGroupIds : App.Config.UI.EspGroupIds;
+            bool drawLabel = drawName || drawDistance || drawHealth || drawGroupId;
 
             // Draw Skeleton
             if (drawSkeleton)
@@ -501,15 +519,29 @@ namespace LoneEftDmaRadar.UI.ESP
                 DrawSkeleton(ctx, player, screenWidth, screenHeight, color, _skeletonPaint.StrokeWidth);
             }
             
-            // Draw Box
-            if (drawBox)
+            RectangleF bbox = default;
+            bool hasBox = false;
+            if (drawBox || drawLabel)
             {
-                DrawBoundingBox(ctx, player, screenWidth, screenHeight, color, _boxPaint.StrokeWidth);
+                hasBox = TryGetBoundingBox(player, screenWidth, screenHeight, out bbox);
             }
 
-            if (drawName && TryProject(player.GetBonePos(Bones.HumanHead), screenWidth, screenHeight, out var headScreen))
+            // Draw Box
+            if (drawBox && hasBox)
             {
-                DrawPlayerName(ctx, headScreen, player, distance, color);
+                DrawBoundingBox(ctx, bbox, color, _boxPaint.StrokeWidth);
+            }
+
+            // Draw head marker
+            bool drawHeadCircle = isAI ? App.Config.UI.EspHeadCircleAI : App.Config.UI.EspHeadCirclePlayers;
+            if (drawHeadCircle && TryProject(player.GetBonePos(Bones.HumanHead), screenWidth, screenHeight, out var headScreen))
+            {
+                ctx.DrawCircle(ToRaw(headScreen), 4f, color, filled: false);
+            }
+
+            if (drawLabel)
+            {
+                DrawPlayerLabel(ctx, player, distance, color, hasBox ? bbox : (RectangleF?)null, screenWidth, screenHeight, drawName, drawDistance, drawHealth, drawGroupId);
             }
         }
 
@@ -527,8 +559,9 @@ namespace LoneEftDmaRadar.UI.ESP
             }
         }
 
-        private void DrawBoundingBox(Dx9RenderContext ctx, AbstractPlayer player, float w, float h, DxColor color, float thickness)
+        private bool TryGetBoundingBox(AbstractPlayer player, float w, float h, out RectangleF rect)
         {
+            rect = default;
             var projectedPoints = new List<SKPoint>();
 
             foreach (var boneKvp in player.PlayerBones)
@@ -538,7 +571,7 @@ namespace LoneEftDmaRadar.UI.ESP
             }
 
             if (projectedPoints.Count < 2)
-                return;
+                return false;
 
             float minX = float.MaxValue, minY = float.MaxValue;
             float maxX = float.MinValue, maxY = float.MinValue;
@@ -555,7 +588,7 @@ namespace LoneEftDmaRadar.UI.ESP
             float boxHeight = maxY - minY;
 
             if (boxWidth < 1f || boxHeight < 1f || boxWidth > w * 2f || boxHeight > h * 2f)
-                return;
+                return false;
 
             minX = Math.Clamp(minX, -50f, w + 50f);
             maxX = Math.Clamp(maxX, -50f, w + 50f);
@@ -563,7 +596,12 @@ namespace LoneEftDmaRadar.UI.ESP
             maxY = Math.Clamp(maxY, -50f, h + 50f);
 
             float padding = 2f;
-            var rect = new RectangleF(minX - padding, minY - padding, (maxX - minX) + padding * 2f, (maxY - minY) + padding * 2f);
+            rect = new RectangleF(minX - padding, minY - padding, (maxX - minX) + padding * 2f, (maxY - minY) + padding * 2f);
+            return true;
+        }
+
+        private void DrawBoundingBox(Dx9RenderContext ctx, RectangleF rect, DxColor color, float thickness)
+        {
             ctx.DrawRect(rect, color, thickness);
         }
 
@@ -578,10 +616,33 @@ namespace LoneEftDmaRadar.UI.ESP
             if (player is LocalPlayer)
                 return SKPaints.PaintAimviewWidgetLocalPlayer;
 
+            if (player.Type == PlayerType.PMC)
+            {
+                if (App.Config.UI.EspGroupColors && player.GroupID >= 0 && !(player is LocalPlayer))
+                {
+                    return _espGroupPaints.GetOrAdd(player.GroupID, id =>
+                    {
+                        var color = _espGroupPalette[Math.Abs(id) % _espGroupPalette.Length];
+                        return new SKPaint
+                        {
+                            Color = color,
+                            StrokeWidth = SKPaints.PaintAimviewWidgetPMC.StrokeWidth,
+                            Style = SKPaints.PaintAimviewWidgetPMC.Style,
+                            IsAntialias = SKPaints.PaintAimviewWidgetPMC.IsAntialias
+                        };
+                    });
+                }
+
+                if (player.PlayerSide == Enums.EPlayerSide.Bear)
+                    return SKPaints.PaintPMCBear;
+                if (player.PlayerSide == Enums.EPlayerSide.Usec)
+                    return SKPaints.PaintPMCUsec;
+                return SKPaints.PaintAimviewWidgetPMC;
+            }
+
             return player.Type switch
             {
                 PlayerType.Teammate => SKPaints.PaintAimviewWidgetTeammate,
-                PlayerType.PMC => SKPaints.PaintAimviewWidgetPMC,
                 PlayerType.AIScav => SKPaints.PaintAimviewWidgetScav,
                 PlayerType.AIRaider => SKPaints.PaintAimviewWidgetRaider,
                 PlayerType.AIBoss => SKPaints.PaintAimviewWidgetBoss,
@@ -593,15 +654,66 @@ namespace LoneEftDmaRadar.UI.ESP
         }
 
         /// <summary>
-        /// Draws player name and distance
+        /// Draws player label (name/distance) relative to the bounding box or head fallback.
         /// </summary>
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-        private void DrawPlayerName(Dx9RenderContext ctx, SKPoint screenPos, AbstractPlayer player, float distance, DxColor color)
+        private void DrawPlayerLabel(Dx9RenderContext ctx, AbstractPlayer player, float distance, DxColor color, RectangleF? bbox, float screenWidth, float screenHeight, bool showName, bool showDistance, bool showHealth, bool showGroup)
         {
-            var name = player.Name ?? "Unknown";
-            var text = $"{name} ({distance:F0}m)";
+            if (!showName && !showDistance && !showHealth && !showGroup)
+                return;
 
-            ctx.DrawText(text, screenPos.X, screenPos.Y - 20, color, DxTextSize.Medium, centerX: true);
+            var name = showName ? player.Name ?? "Unknown" : null;
+            var distanceText = showDistance ? $"{distance:F0}m" : null;
+
+            string healthText = null;
+            if (showHealth && player is ObservedPlayer observed && observed.HealthStatus is not Enums.ETagStatus.Healthy)
+                healthText = observed.HealthStatus.ToString();
+
+            string factionText = null;
+            if (App.Config.UI.EspPlayerFaction && player.IsPmc)
+                factionText = player.PlayerSide.ToString();
+
+            string groupText = null;
+            if (showGroup && player.GroupID != -1 && player.IsPmc && !player.IsAI)
+                groupText = $"G:{player.GroupID}";
+
+            string text = name;
+            if (!string.IsNullOrWhiteSpace(healthText))
+                text = string.IsNullOrWhiteSpace(text) ? healthText : $"{text} ({healthText})";
+            if (!string.IsNullOrWhiteSpace(distanceText))
+                text = string.IsNullOrWhiteSpace(text) ? distanceText : $"{text} ({distanceText})";
+            if (!string.IsNullOrWhiteSpace(groupText))
+                text = string.IsNullOrWhiteSpace(text) ? groupText : $"{text} [{groupText}]";
+            if (!string.IsNullOrWhiteSpace(factionText))
+                text = string.IsNullOrWhiteSpace(text) ? factionText : $"{text} [{factionText}]";
+
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            float drawX;
+            float drawY;
+
+            var labelPos = player.IsAI ? App.Config.UI.EspLabelPositionAI : App.Config.UI.EspLabelPosition;
+
+            if (bbox.HasValue)
+            {
+                var box = bbox.Value;
+                drawX = box.Left + (box.Width / 2f);
+                drawY = labelPos == EspLabelPosition.Top
+                    ? box.Top - 10f
+                    : box.Bottom + 6f;
+            }
+            else if (TryProject(player.GetBonePos(Bones.HumanHead), screenWidth, screenHeight, out var headScreen))
+            {
+                drawX = headScreen.X;
+                drawY = headScreen.Y - 20f;
+            }
+            else
+            {
+                return;
+            }
+
+            ctx.DrawText(text, drawX, drawY, color, DxTextSize.Medium, centerX: true);
         }
 
         /// <summary>
@@ -818,8 +930,18 @@ namespace LoneEftDmaRadar.UI.ESP
             if (_isClosing)
                 return;
 
-            _dxOverlay?.Render();
-            System.Threading.Interlocked.Exchange(ref _renderPending, 0);
+            try
+            {
+                _dxOverlay?.Render();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogDebug($"ESP Refresh error: {ex}");
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _renderPending, 0);
+            }
         }
 
         private void Window_MouseDoubleClick(object sender, MouseButtonEventArgs e)

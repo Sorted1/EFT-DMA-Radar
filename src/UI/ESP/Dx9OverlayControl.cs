@@ -44,8 +44,10 @@ namespace LoneEftDmaRadar.UI.ESP
         public Dx9OverlayControl()
         {
             SetStyle(WinForms.ControlStyles.AllPaintingInWmPaint |
+                     WinForms.ControlStyles.OptimizedDoubleBuffer |
                      WinForms.ControlStyles.Opaque |
                      WinForms.ControlStyles.UserPaint, true);
+            DoubleBuffered = true;
             BackColor = Color.Black;
             TabStop = false;
         }
@@ -71,8 +73,12 @@ namespace LoneEftDmaRadar.UI.ESP
 
         protected override void OnPaint(WinForms.PaintEventArgs e)
         {
-            base.OnPaint(e);
             Render();
+        }
+
+        protected override void OnPaintBackground(WinForms.PaintEventArgs pevent)
+        {
+            // Suppress default background painting to avoid flicker when FPS is capped.
         }
 
         public void Render()

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using LoneEftDmaRadar;
 using LoneEftDmaRadar.UI.ESP;
 using LoneEftDmaRadar.UI.Misc;
 
@@ -115,6 +116,71 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
             }
         }
 
+        public bool EspGroupIds
+        {
+            get => App.Config.UI.EspGroupIds;
+            set
+            {
+                if (App.Config.UI.EspGroupIds != value)
+                {
+                    App.Config.UI.EspGroupIds = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspGroupColors
+        {
+            get => App.Config.UI.EspGroupColors;
+            set
+            {
+                if (App.Config.UI.EspGroupColors != value)
+                {
+                    App.Config.UI.EspGroupColors = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspPlayerFaction
+        {
+            get => App.Config.UI.EspPlayerFaction;
+            set
+            {
+                if (App.Config.UI.EspPlayerFaction != value)
+                {
+                    App.Config.UI.EspPlayerFaction = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspPlayerHealth
+        {
+            get => App.Config.UI.EspPlayerHealth;
+            set
+            {
+                if (App.Config.UI.EspPlayerHealth != value)
+                {
+                    App.Config.UI.EspPlayerHealth = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspPlayerDistance
+        {
+            get => App.Config.UI.EspPlayerDistance;
+            set
+            {
+                if (App.Config.UI.EspPlayerDistance != value)
+                {
+                    App.Config.UI.EspPlayerDistance = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public bool EspAISkeletons
         {
             get => App.Config.UI.EspAISkeletons;
@@ -149,6 +215,45 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
                 if (App.Config.UI.EspAINames != value)
                 {
                     App.Config.UI.EspAINames = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspAIGroupIds
+        {
+            get => App.Config.UI.EspAIGroupIds;
+            set
+            {
+                if (App.Config.UI.EspAIGroupIds != value)
+                {
+                    App.Config.UI.EspAIGroupIds = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspAIHealth
+        {
+            get => App.Config.UI.EspAIHealth;
+            set
+            {
+                if (App.Config.UI.EspAIHealth != value)
+                {
+                    App.Config.UI.EspAIHealth = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspAIDistance
+        {
+            get => App.Config.UI.EspAIDistance;
+            set
+            {
+                if (App.Config.UI.EspAIDistance != value)
+                {
+                    App.Config.UI.EspAIDistance = value;
                     OnPropertyChanged();
                 }
             }
@@ -279,6 +384,60 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
                 if (App.Config.UI.EspExfils != value)
                 {
                     App.Config.UI.EspExfils = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public Array LabelPositions { get; } = Enum.GetValues(typeof(EspLabelPosition));
+
+        public EspLabelPosition EspLabelPosition
+        {
+            get => App.Config.UI.EspLabelPosition;
+            set
+            {
+                if (App.Config.UI.EspLabelPosition != value)
+                {
+                    App.Config.UI.EspLabelPosition = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public EspLabelPosition EspLabelPositionAI
+        {
+            get => App.Config.UI.EspLabelPositionAI;
+            set
+            {
+                if (App.Config.UI.EspLabelPositionAI != value)
+                {
+                    App.Config.UI.EspLabelPositionAI = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspHeadCirclePlayers
+        {
+            get => App.Config.UI.EspHeadCirclePlayers;
+            set
+            {
+                if (App.Config.UI.EspHeadCirclePlayers != value)
+                {
+                    App.Config.UI.EspHeadCirclePlayers = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool EspHeadCircleAI
+        {
+            get => App.Config.UI.EspHeadCircleAI;
+            set
+            {
+                if (App.Config.UI.EspHeadCircleAI != value)
+                {
+                    App.Config.UI.EspHeadCircleAI = value;
                     OnPropertyChanged();
                 }
             }

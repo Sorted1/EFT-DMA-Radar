@@ -99,10 +99,16 @@
 
             <GroupBox Header="Player ESP" Margin="0,0,0,12">
                 <StackPanel>
-                     <WrapPanel>
+                    <WrapPanel>
                         <CheckBox Content="Box" IsChecked="{Binding EspPlayerBoxes, Mode=TwoWay}" Margin="0,0,16,8" />
                         <CheckBox Content="Skeleton" IsChecked="{Binding EspPlayerSkeletons, Mode=TwoWay}" Margin="0,0,16,8" />
                         <CheckBox Content="Names" IsChecked="{Binding EspPlayerNames, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Group IDs" IsChecked="{Binding EspGroupIds, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Group Colors" IsChecked="{Binding EspGroupColors, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Faction Text" IsChecked="{Binding EspPlayerFaction, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Health Status" IsChecked="{Binding EspPlayerHealth, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Distance" IsChecked="{Binding EspPlayerDistance, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Head Circle" IsChecked="{Binding EspHeadCirclePlayers, Mode=TwoWay}" Margin="0,0,16,8" />
                      </WrapPanel>
                      <WrapPanel Margin="0,4,0,0">
                         <TextBlock Text="Max Distance (0 = Unlimited):" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -118,15 +124,33 @@
                                    VerticalAlignment="Center"
                                    MinWidth="50"/>
                      </WrapPanel>
+                     <WrapPanel Margin="0,8,0,0">
+                        <TextBlock Text="Label Position (Players):" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="140"
+                                  ItemsSource="{Binding LabelPositions}"
+                                  SelectedItem="{Binding EspLabelPosition, Mode=TwoWay}"
+                                  ToolTip="Choose where the player label is drawn relative to the bounding box."/>
+                        
+                     </WrapPanel>
                 </StackPanel>
             </GroupBox>
             
             <GroupBox Header="AI ESP" Margin="0,0,0,12">
                 <StackPanel>
-                     <WrapPanel>
+                    <WrapPanel>
                         <CheckBox Content="Box" IsChecked="{Binding EspAIBoxes, Mode=TwoWay}" Margin="0,0,16,8" />
                         <CheckBox Content="Skeleton" IsChecked="{Binding EspAISkeletons, Mode=TwoWay}" Margin="0,0,16,8" />
                         <CheckBox Content="Names" IsChecked="{Binding EspAINames, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Health Status" IsChecked="{Binding EspAIHealth, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Distance" IsChecked="{Binding EspAIDistance, Mode=TwoWay}" Margin="0,0,16,8" />
+                        <CheckBox Content="Head Circle" IsChecked="{Binding EspHeadCircleAI, Mode=TwoWay}" Margin="0,0,16,8" />
+                     </WrapPanel>
+                     <WrapPanel Margin="0,8,0,0">
+                        <TextBlock Text="Label Position (AI/Scav):" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="140"
+                                  ItemsSource="{Binding LabelPositions}"
+                                  SelectedItem="{Binding EspLabelPositionAI, Mode=TwoWay}"
+                                  ToolTip="Choose where the AI/scav label is drawn relative to the bounding box."/>
                      </WrapPanel>
                      <WrapPanel Margin="0,4,0,0">
                         <TextBlock Text="Max Distance (0 = Unlimited):" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -141,6 +165,13 @@
                         <TextBlock Text="{Binding Value, ElementName=AIDistanceSlider, StringFormat='{}{0:F0}m'}"
                                    VerticalAlignment="Center"
                                    MinWidth="50"/>
+                     </WrapPanel>
+                     <WrapPanel Margin="0,8,0,0">
+                        <TextBlock Text="Label Position:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="140"
+                                  ItemsSource="{Binding LabelPositions}"
+                                  SelectedItem="{Binding EspLabelPosition, Mode=TwoWay}"
+                                  ToolTip="Choose where the name/distance label is drawn relative to the bounding box."/>
                      </WrapPanel>
                 </StackPanel>
             </GroupBox>

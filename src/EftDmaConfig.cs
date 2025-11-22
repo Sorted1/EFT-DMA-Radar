@@ -577,12 +577,52 @@ namespace LoneEftDmaRadar
         /// </summary>
         [JsonPropertyName("espPlayerNames")]
         public bool EspPlayerNames { get; set; } = true;
+        /// <summary>
+        /// Show Player Group IDs in ESP.
+        /// </summary>
+        [JsonPropertyName("espGroupIds")]
+        public bool EspGroupIds { get; set; } = true;
+        /// <summary>
+        /// Show Player faction (USEC/BEAR) in ESP.
+        /// </summary>
+        [JsonPropertyName("espPlayerFaction")]
+        public bool EspPlayerFaction { get; set; } = false;
+        /// <summary>
+        /// Color hostile human players by group.
+        /// </summary>
+        [JsonPropertyName("espGroupColors")]
+        public bool EspGroupColors { get; set; } = true;
+        /// <summary>
+        /// Show Player Health status in ESP.
+        /// </summary>
+        [JsonPropertyName("espPlayerHealth")]
+        public bool EspPlayerHealth { get; set; } = true;
+        /// <summary>
+        /// Show Player Distance in ESP.
+        /// </summary>
+        [JsonPropertyName("espPlayerDistance")]
+        public bool EspPlayerDistance { get; set; } = true;
 
         /// <summary>
         /// Show AI Names in ESP.
         /// </summary>
         [JsonPropertyName("espAINames")]
         public bool EspAINames { get; set; } = true;
+        /// <summary>
+        /// Show AI Group IDs in ESP.
+        /// </summary>
+        [JsonPropertyName("espAIGroupIds")]
+        public bool EspAIGroupIds { get; set; } = false;
+        /// <summary>
+        /// Show AI Health status in ESP.
+        /// </summary>
+        [JsonPropertyName("espAIHealth")]
+        public bool EspAIHealth { get; set; } = true;
+        /// <summary>
+        /// Show AI Distance in ESP.
+        /// </summary>
+        [JsonPropertyName("espAIDistance")]
+        public bool EspAIDistance { get; set; } = true;
 
         /// <summary>
         /// Show ESP Overlay.
@@ -727,6 +767,36 @@ namespace LoneEftDmaRadar
         /// </summary>
         [JsonPropertyName("espTargetScreen")]
         public int EspTargetScreen { get; set; } = 0;
+
+        /// <summary>
+        /// Position of the name/distance label relative to the bounding box.
+        /// </summary>
+        [JsonPropertyName("espLabelPosition")]
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public EspLabelPosition EspLabelPosition { get; set; } = EspLabelPosition.Top;
+        /// <summary>
+        /// Position of the AI/scav label relative to the bounding box.
+        /// </summary>
+        [JsonPropertyName("espLabelPositionAI")]
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public EspLabelPosition EspLabelPositionAI { get; set; } = EspLabelPosition.Top;
+
+        /// <summary>
+        /// Draw a small circle on the head bone for ESP.
+        /// </summary>
+        [JsonPropertyName("espHeadCirclePlayers")]
+        public bool EspHeadCirclePlayers { get; set; } = false;
+        /// <summary>
+        /// Draw a small circle on the head bone for AI/Scavs.
+        /// </summary>
+        [JsonPropertyName("espHeadCircleAI")]
+        public bool EspHeadCircleAI { get; set; } = false;
+    }
+
+    public enum EspLabelPosition
+    {
+        Top,
+        Bottom
     }
 
     public sealed class LootConfig
