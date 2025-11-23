@@ -67,7 +67,7 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
                         if (camera == 0)
                             continue;
 
-                        Span<uint> nameChain = stackalloc uint[] { 0x50, 0x80 };
+                        Span<uint> nameChain = stackalloc uint[] { UnitySDK.UnityOffsets.GameObject_ComponentsOffset, UnitySDK.UnityOffsets.GameObject_NameOffset };
                         var namePtr = Memory.ReadPtrChain(camera, false, nameChain);
 
                         if (namePtr == 0)
