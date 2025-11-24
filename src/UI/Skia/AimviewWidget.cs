@@ -139,8 +139,7 @@ namespace LoneEftDmaRadar.UI.Skia
                     if (distance > App.Config.UI.MaxDistance)
                         continue;
 
-                    float radius = maxRadius - MathF.Log(distance + 1f) * scaleFactor;
-                    radius = Math.Clamp(radius, minRadius, maxRadius);
+                    float radius = Math.Clamp(maxRadius - MathF.Sqrt(distance) * 0.65f, minRadius, maxRadius);
 
                     _canvas.DrawCircle(screen.X, screen.Y, radius, GetPaint(player));
                 }

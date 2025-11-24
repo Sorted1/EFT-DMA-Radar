@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Windows;
 using System.Windows.Input;
 using LoneEftDmaRadar;
 using LoneEftDmaRadar.UI.ESP;
@@ -34,31 +35,37 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
         {
             AvailableScreens.Clear();
 
-            // Use WPF's SystemParameters for screen info
-            var primaryWidth = (int)SystemParameters.PrimaryScreenWidth;
-            var primaryHeight = (int)SystemParameters.PrimaryScreenHeight;
-            var virtualWidth = (int)SystemParameters.VirtualScreenWidth;
-            var virtualHeight = (int)SystemParameters.VirtualScreenHeight;
-
-            // Primary screen
-            AvailableScreens.Add(new ScreenOption
+            var monitors = MonitorInfo.GetAllMonitors();
+            foreach (var monitor in monitors.OrderBy(m => m.Index))
             {
-                Index = 0,
-                DisplayName = $"Screen 1 (Primary) - {primaryWidth}x{primaryHeight}"
-            });
+                AvailableScreens.Add(monitor);
+            }
 
-            // If virtual screen is larger, there are additional monitors
-            if (virtualWidth > primaryWidth || virtualHeight > primaryHeight)
+            // Ensure a valid selection exists
+            if (!AvailableScreens.Any())
             {
-                AvailableScreens.Add(new ScreenOption
+                var fallback = new MonitorInfo
                 {
-                    Index = 1,
-                    DisplayName = $"Screen 2 (Secondary) - Detect Auto"
-                });
+                    Index = 0,
+                    Name = "Primary Display",
+                    Width = (int)SystemParameters.PrimaryScreenWidth,
+                    Height = (int)SystemParameters.PrimaryScreenHeight,
+                    Left = 0,
+                    Top = 0,
+                    IsPrimary = true
+                };
+                AvailableScreens.Add(fallback);
+            }
+
+            if (!AvailableScreens.Any(m => m.Index == App.Config.UI.EspTargetScreen))
+            {
+                var primary = AvailableScreens.FirstOrDefault(m => m.IsPrimary) ?? AvailableScreens.First();
+                App.Config.UI.EspTargetScreen = primary.Index;
+                OnPropertyChanged(nameof(EspTargetScreen));
             }
         }
 
-        public ObservableCollection<ScreenOption> AvailableScreens { get; } = new ObservableCollection<ScreenOption>();
+        public ObservableCollection<MonitorInfo> AvailableScreens { get; } = new ObservableCollection<MonitorInfo>();
 
         public ICommand ToggleEspCommand { get; }
         public ICommand StartEspCommand { get; }
@@ -482,6 +489,62 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
             }
         }
 
+        #region Colors
+        public string EspColorPlayers
+        {
+            get => App.Config.UI.EspColorPlayers;
+            set { App.Config.UI.EspColorPlayers = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorAI
+        {
+            get => App.Config.UI.EspColorAI;
+            set { App.Config.UI.EspColorAI = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorRaiders
+        {
+            get => App.Config.UI.EspColorRaiders;
+            set { App.Config.UI.EspColorRaiders = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorBosses
+        {
+            get => App.Config.UI.EspColorBosses;
+            set { App.Config.UI.EspColorBosses = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorLoot
+        {
+            get => App.Config.UI.EspColorLoot;
+            set { App.Config.UI.EspColorLoot = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorExfil
+        {
+            get => App.Config.UI.EspColorExfil;
+            set { App.Config.UI.EspColorExfil = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorCrosshair
+        {
+            get => App.Config.UI.EspColorCrosshair;
+            set { App.Config.UI.EspColorCrosshair = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorFactionBear
+        {
+            get => App.Config.UI.EspColorFactionBear;
+            set { App.Config.UI.EspColorFactionBear = value; OnPropertyChanged(); }
+        }
+
+        public string EspColorFactionUsec
+        {
+            get => App.Config.UI.EspColorFactionUsec;
+            set { App.Config.UI.EspColorFactionUsec = value; OnPropertyChanged(); }
+        }
+        #endregion
+
         public int EspScreenWidth
         {
             get => App.Config.UI.EspScreenWidth;
@@ -518,19 +581,6 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
                 if (App.Config.UI.EspMaxFPS != value)
                 {
                     App.Config.UI.EspMaxFPS = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        public int RadarMaxFPS
-        {
-            get => App.Config.UI.RadarMaxFPS;
-            set
-            {
-                if (App.Config.UI.RadarMaxFPS != value)
-                {
-                    App.Config.UI.RadarMaxFPS = value;
                     OnPropertyChanged();
                 }
             }
@@ -651,9 +701,4 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
         }
     }
 
-    public class ScreenOption
-    {
-        public int Index { get; set; }
-        public string DisplayName { get; set; }
-    }
 }

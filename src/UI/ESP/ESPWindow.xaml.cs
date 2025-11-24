@@ -12,13 +12,16 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using LoneEftDmaRadar.UI.Skia;
 using LoneEftDmaRadar.UI.Misc;
+using LoneEftDmaRadar.DMA;
 using SharpDX;
 using SharpDX.Mathematics.Interop;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Forms.Integration;
 using WinForms = System.Windows.Forms;
+using SkiaSharp;
 using DxColor = SharpDX.Mathematics.Interop.RawColorBGRA;
+using CameraManagerNew = LoneEftDmaRadar.Tarkov.GameWorld.Camera.CameraManager;
 
 namespace LoneEftDmaRadar.UI.ESP
 {
@@ -44,8 +47,6 @@ namespace LoneEftDmaRadar.UI.ESP
         // Cached Fonts/Paints
         private readonly SKPaint _skeletonPaint;
         private readonly SKPaint _boxPaint;
-        private readonly SKPaint _lootPaint;
-        private readonly SKPaint _lootTextPaint;
         private readonly SKPaint _crosshairPaint;
         private static readonly SKColor[] _espGroupPalette = new SKColor[]
         {
@@ -60,9 +61,7 @@ namespace LoneEftDmaRadar.UI.ESP
         };
         private static readonly ConcurrentDictionary<int, SKPaint> _espGroupPaints = new();
 
-        private Vector3 _camPos;
         private bool _isFullscreen;
-        private readonly CameraManager _cameraManager = new();
 
         /// <summary>
         /// LocalPlayer (who is running Radar) 'Player' object.
@@ -117,7 +116,6 @@ namespace LoneEftDmaRadar.UI.ESP
         public ESPWindow()
         {
             InitializeComponent();
-            CameraManager.TryInitialize();
             InitializeRenderSurface();
             
             // Initial sizes
@@ -140,19 +138,6 @@ namespace LoneEftDmaRadar.UI.ESP
                 StrokeWidth = 1.0f,
                 IsAntialias = false, // Crisper boxes
                 Style = SKPaintStyle.Stroke
-            };
-
-            _lootPaint = new SKPaint
-            {
-                Color = SKColors.LightGray,
-                Style = SKPaintStyle.Fill,
-                IsAntialias = true
-            };
-
-             _lootTextPaint = new SKPaint
-            {
-                Color = SKColors.Silver,
-                Style = SKPaintStyle.Fill
             };
 
             _crosshairPaint = new SKPaint
@@ -271,9 +256,7 @@ namespace LoneEftDmaRadar.UI.ESP
                 // Detect raid state changes and reset camera/state when leaving raid
                 if (_lastInRaidState && !InRaid)
                 {
-                    CameraManager.Reset();
-                    _transposedViewMatrix = new TransposedViewMatrix();
-                    _camPos = Vector3.Zero;
+                    CameraManagerNew.Reset();
                     DebugLogger.LogInfo("ESP: Detected raid end - reset all state");
                 }
                 _lastInRaidState = InRaid;
@@ -292,15 +275,12 @@ namespace LoneEftDmaRadar.UI.ESP
                     }
                     else
                     {
-                        _cameraManager.Update(localPlayer);
-                        UpdateCameraPositionFromMatrix();
-
                         ApplyResolutionOverrideIfNeeded();
 
                         // Render Loot (background layer)
                         if (App.Config.Loot.Enabled && App.Config.UI.EspLoot)
                         {
-                            DrawLoot(ctx, screenWidth, screenHeight);
+                            DrawLoot(ctx, screenWidth, screenHeight, localPlayer);
                         }
 
                         // Render Exfils
@@ -319,8 +299,8 @@ namespace LoneEftDmaRadar.UI.ESP
                                              _ => SKPaints.PaintExfilOpen
                                          };
                                          
-                                         ctx.DrawCircle(ToRaw(screen), 4f, ToColor(paint), true);
-                                         ctx.DrawText(exfil.Name, screen.X + 6, screen.Y + 4, ToColor(SKPaints.TextExfil), DxTextSize.Medium);
+                                         ctx.DrawCircle(ToRaw(screen), 4f, GetExfilColorForRender(), true);
+                                         ctx.DrawText(exfil.Name, screen.X + 6, screen.Y + 4, GetExfilColorForRender(), DxTextSize.Medium);
                                      }
                                 }
                             }
@@ -332,11 +312,19 @@ namespace LoneEftDmaRadar.UI.ESP
                             DrawPlayerESP(ctx, player, localPlayer, screenWidth, screenHeight);
                         }
 
+                        DrawDeviceAimbotTargetLine(ctx, screenWidth, screenHeight);
+
+                        if (App.Config.Device.Enabled)
+                        {
+                            DrawDeviceAimbotFovCircle(ctx, screenWidth, screenHeight);
+                        }
+
                         if (App.Config.UI.EspCrosshair)
                         {
                             DrawCrosshair(ctx, screenWidth, screenHeight);
                         }
 
+                        DrawDeviceAimbotDebugOverlay(ctx, screenWidth, screenHeight);
                         DrawFPS(ctx, screenWidth, screenHeight);
                     }
                 }
@@ -347,15 +335,20 @@ namespace LoneEftDmaRadar.UI.ESP
             }
         }
 
-        private void DrawLoot(Dx9RenderContext ctx, float screenWidth, float screenHeight)
+        private void DrawLoot(Dx9RenderContext ctx, float screenWidth, float screenHeight, LocalPlayer localPlayer)
         {
             var lootItems = Memory.Game?.Loot?.FilteredLoot;
             if (lootItems is null) return;
+
+            var camPos = localPlayer?.Position ?? Vector3.Zero;
 
             foreach (var item in lootItems)
             {
                 // Filter based on ESP settings
                 bool isCorpse = item is LootCorpse;
+                bool isQuest = item.IsQuestItem;
+                if (isQuest && !App.Config.UI.EspQuestLoot)
+                    continue;
                 if (isCorpse && !App.Config.UI.EspCorpses)
                     continue;
 
@@ -376,7 +369,7 @@ namespace LoneEftDmaRadar.UI.ESP
                     continue;
 
                 // Check distance to loot
-                float distance = Vector3.Distance(_camPos, item.Position);
+                float distance = Vector3.Distance(camPos, item.Position);
                 if (App.Config.UI.EspLootMaxDistance > 0 && distance > App.Config.UI.EspLootMaxDistance)
                     continue;
 
@@ -404,48 +397,47 @@ namespace LoneEftDmaRadar.UI.ESP
                          inCone = screenAngle <= App.Config.UI.EspLootConeAngle;
                      }
 
-                     // Determine colors based on item type
-                     SKPaint circlePaint, textPaint;
+                     // Determine colors based on item type (default to user-selected loot color).
+                     DxColor circleColor = GetLootColorForRender();
+                     DxColor textColor = circleColor;
 
-                     if (item.Important)
+                     if (isQuest)
                      {
-                         // Filtered important items (custom filters) - Purple
-                         circlePaint = SKPaints.PaintFilteredLoot;
-                         textPaint = SKPaints.TextFilteredLoot;
+                         circleColor = ToColor(SKPaints.PaintQuestItem);
+                         textColor = circleColor;
+                     }
+                     else if (item.Important)
+                     {
+                         circleColor = ToColor(SKPaints.PaintFilteredLoot);
+                         textColor = circleColor;
                      }
                      else if (item.IsValuableLoot)
                      {
-                         // Valuable items (price >= minValueValuable) - Turquoise
-                         circlePaint = SKPaints.PaintImportantLoot;
-                         textPaint = SKPaints.TextImportantLoot;
+                         circleColor = ToColor(SKPaints.PaintImportantLoot);
+                         textColor = circleColor;
                      }
                      else if (isBackpack)
                      {
-                         circlePaint = SKPaints.PaintBackpacks;
-                         textPaint = SKPaints.TextBackpacks;
+                         circleColor = ToColor(SKPaints.PaintBackpacks);
+                         textColor = circleColor;
                      }
                      else if (isMeds)
                      {
-                         circlePaint = SKPaints.PaintMeds;
-                         textPaint = SKPaints.TextMeds;
+                         circleColor = ToColor(SKPaints.PaintMeds);
+                         textColor = circleColor;
                      }
                      else if (isFood)
                      {
-                         circlePaint = SKPaints.PaintFood;
-                         textPaint = SKPaints.TextFood;
+                         circleColor = ToColor(SKPaints.PaintFood);
+                         textColor = circleColor;
                      }
                      else if (isCorpse)
                      {
-                         circlePaint = SKPaints.PaintCorpse;
-                         textPaint = SKPaints.TextCorpse;
-                     }
-                     else
-                     {
-                         circlePaint = _lootPaint;
-                         textPaint = _lootTextPaint;
+                         circleColor = ToColor(SKPaints.PaintCorpse);
+                         textColor = circleColor;
                      }
 
-                     ctx.DrawCircle(ToRaw(screen), 2f, ToColor(circlePaint), true);
+                     ctx.DrawCircle(ToRaw(screen), 2f, circleColor, true);
 
                      if (item.Important || inCone)
                      {
@@ -472,8 +464,8 @@ namespace LoneEftDmaRadar.UI.ESP
                                      : $"{shortName} ({LoneEftDmaRadar.Misc.Utilities.FormatNumberKM(item.Price)})";
                              }
                          }
-                         ctx.DrawText(text, screen.X + 4, screen.Y + 4, ToColor(textPaint), DxTextSize.Small);
-                     }
+                         ctx.DrawText(text, screen.X + 4, screen.Y + 4, textColor, DxTextSize.Small);
+                    }
                 }
             }
         }
@@ -503,7 +495,12 @@ namespace LoneEftDmaRadar.UI.ESP
                 return;
 
             // Get Color
-            var color = ToColor(GetPlayerColor(player));
+            var color = GetPlayerColorForRender(player);
+            bool isDeviceAimbotLocked = MemDMA.DeviceAimbot?.LockedTarget == player;
+            if (isDeviceAimbotLocked)
+            {
+                color = ToColor(new SKColor(0, 200, 255, 220));
+            }
 
             bool drawSkeleton = isAI ? App.Config.UI.EspAISkeletons : App.Config.UI.EspPlayerSkeletons;
             bool drawBox = isAI ? App.Config.UI.EspAIBoxes : App.Config.UI.EspPlayerBoxes;
@@ -538,14 +535,25 @@ namespace LoneEftDmaRadar.UI.ESP
             {
                 var head = player.GetBonePos(Bones.HumanHead);
                 var headTop = head;
-                headTop.Y += 4f; // approximate head height in world space
+                headTop.Y += 0.18f; // small offset to estimate head height
 
                 if (TryProject(head, screenWidth, screenHeight, out var headScreen) &&
                     TryProject(headTop, screenWidth, screenHeight, out var headTopScreen))
                 {
-                    var dx = headTopScreen.X - headScreen.X;
-                    var dy = headTopScreen.Y - headScreen.Y;
-                    float radius = MathF.Max(2f, MathF.Sqrt(dx * dx + dy * dy));
+                    float radius;
+                    if (hasBox)
+                    {
+                        // scale with on-screen box to stay proportional to the model
+                        radius = MathF.Min(bbox.Width, bbox.Height) * 0.1f;
+                    }
+                    else
+                    {
+                        // fallback: use projected head height
+                        var dy = MathF.Abs(headTopScreen.Y - headScreen.Y);
+                        radius = dy * 0.65f;
+                    }
+
+                    radius = Math.Clamp(radius, 2f, 12f);
                     ctx.DrawCircle(ToRaw(headScreen), radius, color, filled: false);
                 }
             }
@@ -570,14 +578,30 @@ namespace LoneEftDmaRadar.UI.ESP
             }
         }
 
-        private bool TryGetBoundingBox(AbstractPlayer player, float w, float h, out RectangleF rect)
+            private bool TryGetBoundingBox(AbstractPlayer player, float w, float h, out RectangleF rect)
         {
             rect = default;
             var projectedPoints = new List<SKPoint>();
+            var mins = new Vector3((float)-0.4, 0, (float)-0.4);
+            var maxs = new Vector3((float)0.4, (float)1.75, (float)0.4);
 
-            foreach (var boneKvp in player.PlayerBones)
+            mins = player.Position + mins;
+            maxs = player.Position + maxs;
+
+            var points = new List<Vector3> {
+                new Vector3(mins.X, mins.Y, mins.Z),
+                new Vector3(mins.X, maxs.Y, mins.Z),
+                new Vector3(maxs.X, maxs.Y, mins.Z),
+                new Vector3(maxs.X, mins.Y, mins.Z),
+                new Vector3(maxs.X, maxs.Y, maxs.Z),
+                new Vector3(mins.X, maxs.Y, maxs.Z),
+                new Vector3(mins.X, mins.Y, maxs.Z),
+                new Vector3(maxs.X, mins.Y, maxs.Z)
+            };
+
+            foreach (var position in points)
             {
-                if (TryProject(boneKvp.Value.Position, w, h, out var s))
+                if (TryProject(position, w, h, out var s))
                     projectedPoints.Add(s);
             }
 
@@ -752,9 +776,71 @@ namespace LoneEftDmaRadar.UI.ESP
             float centerY = height / 2f;
             float length = MathF.Max(2f, App.Config.UI.EspCrosshairLength);
 
-            var color = ToColor(_crosshairPaint);
+            var color = GetCrosshairColor();
             ctx.DrawLine(new RawVector2(centerX - length, centerY), new RawVector2(centerX + length, centerY), color, _crosshairPaint.StrokeWidth);
             ctx.DrawLine(new RawVector2(centerX, centerY - length), new RawVector2(centerX, centerY + length), color, _crosshairPaint.StrokeWidth);
+        }
+
+        private void DrawDeviceAimbotTargetLine(Dx9RenderContext ctx, float width, float height)
+        {
+            var DeviceAimbot = MemDMA.DeviceAimbot;
+            if (DeviceAimbot?.LockedTarget is not { } target)
+                return;
+
+            var headPos = target.GetBonePos(Bones.HumanHead);
+            if (!WorldToScreen2(headPos, out var screen, width, height))
+                return;
+
+            var center = new RawVector2(width / 2f, height / 2f);
+            bool engaged = DeviceAimbot.IsEngaged;
+            var skColor = engaged ? new SKColor(0, 200, 255, 200) : new SKColor(255, 210, 0, 180);
+            ctx.DrawLine(center, ToRaw(screen), ToColor(skColor), 2f);
+        }
+
+        private void DrawDeviceAimbotFovCircle(Dx9RenderContext ctx, float width, float height)
+        {
+            var cfg = App.Config.Device;
+            if (cfg.FOV <= 0)
+                return;
+
+            float radius = Math.Clamp(cfg.FOV, 5f, Math.Min(width, height));
+            bool engaged = MemDMA.DeviceAimbot?.IsEngaged == true;
+            var skColor = engaged ? new SKColor(0, 200, 120, 180) : new SKColor(180, 220, 255, 120);
+            ctx.DrawCircle(new RawVector2(width / 2f, height / 2f), radius, ToColor(skColor), filled: false);
+        }
+
+        private void DrawDeviceAimbotDebugOverlay(Dx9RenderContext ctx, float width, float height)
+        {
+            if (!App.Config.Device.ShowDebug)
+                return;
+
+            var snapshot = MemDMA.DeviceAimbot?.GetDebugSnapshot();
+
+            var lines = snapshot == null
+                ? new[] { "Device Aimbot: no data" }
+                : new[]
+                {
+                    "=== Device Aimbot ===",
+                    $"Status: {snapshot.Status}",
+                    $"Key: {(snapshot.KeyEngaged ? "ENGAGED" : "Idle")} | Enabled: {snapshot.Enabled} | Device: {(snapshot.DeviceConnected ? "Connected" : "Disconnected")}",
+                    $"InRaid: {snapshot.InRaid} | FOV: {snapshot.ConfigFov:F0}px | MaxDist: {snapshot.ConfigMaxDistance:F0}m | Mode: {snapshot.TargetingMode}",
+                    $"Candidates t:{snapshot.CandidateTotal} type:{snapshot.CandidateTypeOk} dist:{snapshot.CandidateInDistance} skel:{snapshot.CandidateWithSkeleton} w2s:{snapshot.CandidateW2S} final:{snapshot.CandidateCount}",
+                    $"Target: {(snapshot.LockedTargetName ?? "None")} [{snapshot.LockedTargetType?.ToString() ?? "-"}] valid={snapshot.TargetValid}",
+                    snapshot.LockedTargetDistance.HasValue ? $"  Dist {snapshot.LockedTargetDistance.Value:F1}m | FOV { (float.IsNaN(snapshot.LockedTargetFov) ? "n/a" : snapshot.LockedTargetFov.ToString("F1")) } | Bone {snapshot.TargetBone}" : string.Empty,
+                    $"Fireport: {(snapshot.HasFireport ? snapshot.FireportPosition?.ToString() : "None")}",
+                    $"Ballistics: {(snapshot.BallisticsValid ? $"OK (Speed {(snapshot.BulletSpeed.HasValue ? snapshot.BulletSpeed.Value.ToString("F1") : "?")} m/s, Predict {(snapshot.PredictionEnabled ? "ON" : "OFF")})" : "Invalid/None")}"
+                }.Where(l => !string.IsNullOrEmpty(l)).ToArray();
+
+            float x = 10f;
+            float y = 40f;
+            float lineStep = 16f;
+            var color = ToColor(SKColors.White);
+
+            foreach (var line in lines)
+            {
+                ctx.DrawText(line, x, y, color, DxTextSize.Small);
+                y += lineStep;
+            }
         }
 
         private void DrawFPS(Dx9RenderContext ctx, float width, float height)
@@ -770,6 +856,63 @@ namespace LoneEftDmaRadar.UI.ESP
         private static DxColor ToColor(SKColor color) => new(color.Blue, color.Green, color.Red, color.Alpha);
 
         #endregion
+
+        private DxColor GetPlayerColorForRender(AbstractPlayer player)
+        {
+            var cfg = App.Config.UI;
+            var basePaint = GetPlayerColor(player);
+
+            // Preserve special colouring (local, focused, watchlist/streamer, teammates).
+            if (player is LocalPlayer || player.IsFocused ||
+                player.Type is PlayerType.SpecialPlayer or PlayerType.Streamer or PlayerType.Teammate)
+            {
+                return ToColor(basePaint);
+            }
+
+            // Respect group/faction colours when enabled.
+            if (!player.IsAI)
+            {
+                if (cfg.EspGroupColors && player.GroupID >= 0)
+                    return ToColor(basePaint);
+                if (cfg.EspFactionColors && player.IsPmc)
+                {
+                    var factionColor = player.PlayerSide switch
+                    {
+                        Enums.EPlayerSide.Bear => ColorFromHex(cfg.EspColorFactionBear),
+                        Enums.EPlayerSide.Usec => ColorFromHex(cfg.EspColorFactionUsec),
+                        _ => ColorFromHex(cfg.EspColorPlayers)
+                    };
+                    return ToColor(factionColor);
+                }
+            }
+
+            if (player.IsAI)
+            {
+                var aiHex = player.Type switch
+                {
+                    PlayerType.AIBoss => cfg.EspColorBosses,
+                    PlayerType.AIRaider => cfg.EspColorRaiders,
+                    _ => cfg.EspColorAI
+                };
+
+                return ToColor(ColorFromHex(aiHex));
+            }
+
+            // Fallback to user-configured player colours.
+            return ToColor(ColorFromHex(cfg.EspColorPlayers));
+        }
+
+        private DxColor GetLootColorForRender() => ToColor(ColorFromHex(App.Config.UI.EspColorLoot));
+        private DxColor GetExfilColorForRender() => ToColor(ColorFromHex(App.Config.UI.EspColorExfil));
+        private DxColor GetCrosshairColor() => ToColor(ColorFromHex(App.Config.UI.EspColorCrosshair));
+
+        private static SKColor ColorFromHex(string hex)
+        {
+            if (string.IsNullOrWhiteSpace(hex))
+                return SKColors.White;
+            try { return SKColor.Parse(hex); }
+            catch { return SKColors.White; }
+        }
 
         private void ApplyDxFontConfig()
         {
@@ -805,70 +948,21 @@ namespace LoneEftDmaRadar.UI.ESP
 
         #region WorldToScreen Conversion
 
-        private TransposedViewMatrix _transposedViewMatrix = new();
-
-        private void UpdateCameraPositionFromMatrix()
+        /// <summary>
+        /// Resets ESP state when a raid ends (ensures clean slate next raid).
+        /// </summary>
+        public void OnRaidStopped()
         {
-            var viewMatrix = _cameraManager.ViewMatrix;
-            _camPos = new Vector3(viewMatrix.M14, viewMatrix.M24, viewMatrix.M34);
-            _transposedViewMatrix.Update(ref viewMatrix);
+            _lastInRaidState = false;
+            _espGroupPaints.Clear();
+            CameraManagerNew.Reset();
+            RefreshESP();
+            DebugLogger.LogInfo("ESP: RaidStopped -> state reset");
         }
 
         private bool WorldToScreen2(in Vector3 world, out SKPoint scr, float screenWidth, float screenHeight)
         {
-            scr = default;
-
-            float w = Vector3.Dot(_transposedViewMatrix.Translation, world) + _transposedViewMatrix.M44;
-            
-            if (w < 0.098f)
-                return false;
-            
-            float x = Vector3.Dot(_transposedViewMatrix.Right, world) + _transposedViewMatrix.M14;
-            float y = Vector3.Dot(_transposedViewMatrix.Up, world) + _transposedViewMatrix.M24;
-            
-            var centerX = screenWidth / 2f;
-            var centerY = screenHeight / 2f;
-            
-            scr.X = centerX * (1f + x / w);
-            scr.Y = centerY * (1f - y / w);
-            
-            return true;
-        }
-
-        private class TransposedViewMatrix
-        {
-            public float M44;
-            public float M14;
-            public float M24;
-            public Vector3 Translation;
-            public Vector3 Right;
-            public Vector3 Up;
-            public Vector3 Forward;
-
-            public void Update(ref Matrix4x4 matrix)
-            {
-                M44 = matrix.M44;
-                M14 = matrix.M41;
-                M24 = matrix.M42;
-
-                Translation.X = matrix.M14;
-                Translation.Y = matrix.M24;
-                Translation.Z = matrix.M34;
-
-                Right.X = matrix.M11;
-                Right.Y = matrix.M21;
-                Right.Z = matrix.M31;
-
-                Up.X = matrix.M12;
-                Up.Y = matrix.M22;
-                Up.Z = matrix.M32;
-
-                // In Unity's View Matrix, forward is the negative Z-axis
-                // X is negated to match the horizontal orientation in EFT
-                Forward.X = matrix.M13;
-                Forward.Y = -matrix.M23;
-                Forward.Z = -matrix.M33;
-            }
+            return CameraManagerNew.WorldToScreen(in world, out scr, true, true);
         }
 
         private bool TryProject(in Vector3 world, float w, float h, out SKPoint screen)
@@ -909,6 +1003,12 @@ namespace LoneEftDmaRadar.UI.ESP
 
         private void GlControl_KeyDown(object sender, WinForms.KeyEventArgs e)
         {
+            if (e.KeyCode == WinForms.Keys.F12)
+            {
+                ForceReleaseCursorAndHide();
+                return;
+            }
+
             if (e.KeyCode == WinForms.Keys.Escape && this.WindowState == WindowState.Maximized)
             {
                 ToggleFullscreen();
@@ -931,8 +1031,6 @@ namespace LoneEftDmaRadar.UI.ESP
                 _dxOverlay?.Dispose();
                 _skeletonPaint.Dispose();
                 _boxPaint.Dispose();
-                _lootPaint.Dispose();
-                _lootTextPaint.Dispose();
                 _crosshairPaint.Dispose();
             }
             catch (Exception ex)
@@ -973,6 +1071,12 @@ namespace LoneEftDmaRadar.UI.ESP
         // Handler for keys (ESC to exit fullscreen)
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Key == Key.F12)
+            {
+                ForceReleaseCursorAndHide();
+                return;
+            }
+
             if (e.Key == Key.Escape && this.WindowState == WindowState.Maximized)
             {
                 ToggleFullscreen();
@@ -1000,49 +1104,11 @@ namespace LoneEftDmaRadar.UI.ESP
                 this.Topmost = true;
                 this.WindowState = WindowState.Normal;
 
-                // Get target screen
-                var targetScreenIndex = App.Config.UI.EspTargetScreen;
-                var (width, height) = GetConfiguredResolution();
+                var monitor = GetTargetMonitor();
+                var (width, height) = GetConfiguredResolution(monitor);
 
-                // Position window based on screen selection
-                if (targetScreenIndex == 0)
-                {
-                    // Primary screen - position at 0,0
-                    this.Left = 0;
-                    this.Top = 0;
-                    if (width == SystemParameters.PrimaryScreenWidth && height == SystemParameters.PrimaryScreenHeight)
-                    {
-                        width = SystemParameters.PrimaryScreenWidth;
-                        height = SystemParameters.PrimaryScreenHeight;
-                    }
-                }
-                else
-                {
-                    // Secondary screen - position to the right of primary
-                    var primaryWidth = SystemParameters.PrimaryScreenWidth;
-                    var virtualLeft = SystemParameters.VirtualScreenLeft;
-                    var virtualTop = SystemParameters.VirtualScreenTop;
-
-                    // If secondary is to the left (negative coords)
-                    if (virtualLeft < 0)
-                    {
-                        this.Left = virtualLeft;
-                        this.Top = virtualTop;
-                    }
-                    else
-                    {
-                        // Secondary is to the right
-                        this.Left = primaryWidth;
-                        this.Top = 0;
-                    }
-
-                    if (width == SystemParameters.PrimaryScreenWidth && height == SystemParameters.PrimaryScreenHeight)
-                    {
-                        // Use virtual screen dimensions for secondary
-                        width = SystemParameters.VirtualScreenWidth - SystemParameters.PrimaryScreenWidth;
-                        height = SystemParameters.VirtualScreenHeight;
-                    }
-                }
+                this.Left = monitor?.Left ?? 0;
+                this.Top = monitor?.Top ?? 0;
 
                 this.Width = width;
                 this.Height = height;
@@ -1057,22 +1123,23 @@ namespace LoneEftDmaRadar.UI.ESP
             if (!_isFullscreen)
                 return;
 
-            var (width, height) = GetConfiguredResolution();
-            this.Left = 0;
-            this.Top = 0;
+            var monitor = GetTargetMonitor();
+            var (width, height) = GetConfiguredResolution(monitor);
+            this.Left = monitor?.Left ?? 0;
+            this.Top = monitor?.Top ?? 0;
             this.Width = width;
             this.Height = height;
             this.RefreshESP();
         }
 
-        private (double width, double height) GetConfiguredResolution()
+        private (double width, double height) GetConfiguredResolution(MonitorInfo monitor)
         {
             double width = App.Config.UI.EspScreenWidth > 0
                 ? App.Config.UI.EspScreenWidth
-                : SystemParameters.PrimaryScreenWidth;
+                : monitor?.Width ?? SystemParameters.PrimaryScreenWidth;
             double height = App.Config.UI.EspScreenHeight > 0
                 ? App.Config.UI.EspScreenHeight
-                : SystemParameters.PrimaryScreenHeight;
+                : monitor?.Height ?? SystemParameters.PrimaryScreenHeight;
             return (width, height);
         }
 
@@ -1084,20 +1151,53 @@ namespace LoneEftDmaRadar.UI.ESP
             if (App.Config.UI.EspScreenWidth <= 0 && App.Config.UI.EspScreenHeight <= 0)
                 return;
 
-            var target = GetConfiguredResolution();
+            var monitor = GetTargetMonitor();
+            var target = GetConfiguredResolution(monitor);
             if (Math.Abs(Width - target.width) > 0.5 || Math.Abs(Height - target.height) > 0.5)
             {
                 Width = target.width;
                 Height = target.height;
-                Left = 0;
-                Top = 0;
+                Left = monitor?.Left ?? 0;
+                Top = monitor?.Top ?? 0;
             }
+        }
+
+        private MonitorInfo GetTargetMonitor()
+        {
+            return MonitorInfo.GetMonitor(App.Config.UI.EspTargetScreen);
         }
 
         public void ApplyFontConfig()
         {
             ApplyDxFontConfig();
             RefreshESP();
+        }
+
+        /// <summary>
+        /// Emergency escape hatch if the overlay ever captures the cursor:
+        /// releases capture, resets cursors, hides the ESP, and drops Topmost.
+        /// Bound to F12 on both WPF and WinForms handlers.
+        /// </summary>
+        private void ForceReleaseCursorAndHide()
+        {
+            try
+            {
+                Mouse.Capture(null);
+                WinForms.Cursor.Current = WinForms.Cursors.Default;
+                this.Cursor = System.Windows.Input.Cursors.Arrow;
+                Mouse.OverrideCursor = null;
+                if (_dxOverlay != null)
+                {
+                    _dxOverlay.Capture = false;
+                }
+                this.Topmost = false;
+                ShowESP = false;
+                Hide();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogDebug($"ESP: ForceReleaseCursor failed: {ex}");
+            }
         }
 
         #endregion

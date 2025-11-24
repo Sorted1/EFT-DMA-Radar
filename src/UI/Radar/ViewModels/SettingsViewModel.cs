@@ -45,12 +45,10 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
         private void OnPropertyChanged(string name) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        public ICommand AboutUrlCommand { get; }
 
         public SettingsViewModel(SettingsTab parent)
         {
             _parent = parent ?? throw new ArgumentNullException(nameof(parent));
-            AboutUrlCommand = new SimpleCommand(OnAboutUrl);
             RestartRadarCommand = new SimpleCommand(OnRestartRadar);
             OpenHotkeyManagerCommand = new SimpleCommand(OnOpenHotkeyManager);
             OpenColorPickerCommand = new SimpleCommand(OnOpenColorPicker);
@@ -58,12 +56,6 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
             OpenConfigCommand = new SimpleCommand(OnOpenConfig);
             InitializeContainers();
             SetScaleValues(UIScale);
-        }
-
-        private void OnAboutUrl()
-        {
-            const string url = "https://lone-dma.org/";
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
 
         #region General Settings
@@ -89,8 +81,14 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
         private void OnOpenHotkeyManager()
         {
             HotkeyManagerIsEnabled = false;
+            bool wasEspVisible = UI.ESP.ESPWindow.ShowESP;
             try
             {
+                if (wasEspVisible)
+                {
+                    UI.ESP.ESPManager.HideESP();
+                }
+
                 var wnd = new HotkeyManagerWindow()
                 {
                     Owner = MainWindow.Instance
@@ -99,6 +97,10 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
             }
             finally
             {
+                if (wasEspVisible)
+                {
+                    UI.ESP.ESPManager.ShowESP();
+                }
                 HotkeyManagerIsEnabled = true;
             }
         }
@@ -419,6 +421,32 @@ namespace LoneEftDmaRadar.UI.Radar.ViewModels
                         vm.IsLootButtonVisible = value;
                     }
                     OnPropertyChanged(nameof(ShowLoot));
+                }
+            }
+        }
+
+        public bool EspQuestLoot
+        {
+            get => App.Config.UI.EspQuestLoot;
+            set
+            {
+                if (App.Config.UI.EspQuestLoot != value)
+                {
+                    App.Config.UI.EspQuestLoot = value;
+                    OnPropertyChanged(nameof(EspQuestLoot));
+                }
+            }
+        }
+
+        public int RadarMaxFPS
+        {
+            get => App.Config.UI.RadarMaxFPS;
+            set
+            {
+                if (App.Config.UI.RadarMaxFPS != value)
+                {
+                    App.Config.UI.RadarMaxFPS = value;
+                    OnPropertyChanged(nameof(RadarMaxFPS));
                 }
             }
         }

@@ -102,7 +102,7 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld.Player
         {
             try
             {
-                var hands = Memory.ReadPtr(Base + Offsets.Player.HandsController);
+                var hands = Memory.ReadPtr(Base + Offsets.Player._handsController);
                 if (hands == 0) return 0f;
                 
                 var anim = Memory.ReadPtr(hands + Offsets.FirearmController.WeaponAnimation);
@@ -209,6 +209,7 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld.Player
                  _verticesCount = PlayerBones.Values.Max(x => x.Count);
                  _verticesCount = Math.Max(_verticesCount, SkeletonRoot.Count);
             }
+            Skeleton = new PlayerSkeleton(SkeletonRoot, PlayerBones);
         }
 
         /// <summary>

@@ -26,8 +26,10 @@ SOFTWARE.
  *
 */
 
+using LoneEftDmaRadar.DMA;
 using LoneEftDmaRadar.Misc;
 using LoneEftDmaRadar.Misc.Workers;
+using LoneEftDmaRadar.Tarkov.Features.MemWrites;
 using LoneEftDmaRadar.Tarkov.GameWorld.Exits;
 using LoneEftDmaRadar.Tarkov.GameWorld.Explosives;
 using LoneEftDmaRadar.Tarkov.GameWorld.Loot.Helpers;
@@ -59,6 +61,8 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
         private readonly WorkerThread _t1;
         private readonly WorkerThread _t2;
         private readonly WorkerThread _t3;
+        private readonly WorkerThread _t4;
+        private readonly MemWritesManager _memWritesManager;
 
         /// <summary>
         /// Map ID of Current Map.
@@ -106,12 +110,20 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
                     SleepMode = WorkerThreadSleepMode.DynamicSleep
                 };
                 _t3.PerformWork += ExplosivesWorker_PerformWork;
-                var rgtPlayersAddr = Memory.ReadPtr(localGameWorld + Offsets.ClientLocalGameWorld.RegisteredPlayers, false);
+                var rgtPlayersAddr = Memory.ReadPtr(localGameWorld + Offsets.GameWorld.RegisteredPlayers, false);
                 _rgtPlayers = new RegisteredPlayers(rgtPlayersAddr, this);
                 ArgumentOutOfRangeException.ThrowIfLessThan(_rgtPlayers.GetPlayerCount(), 1, nameof(_rgtPlayers));
                 Loot = new(localGameWorld);
                 _exfilManager = new(mapID, _rgtPlayers.LocalPlayer.IsPmc);
                 _explosivesManager = new(localGameWorld);
+                _memWritesManager = new MemWritesManager();
+                _t4 = new WorkerThread()
+                {
+                    Name = "MemWrites Worker",
+                    ThreadPriority = ThreadPriority.Normal,
+                    SleepDuration = TimeSpan.FromMilliseconds(100)
+                };
+                _t4.PerformWork += MemWritesWorker_PerformWork;
             }
             catch
             {
@@ -125,9 +137,11 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
         /// </summary>
         public void Start()
         {
+            _memWritesManager?.OnRaidStart();
             _t1.Start();
             _t2.Start();
             _t3.Start();
+            _t4.Start();
         }
 
         /// <summary>
@@ -241,7 +255,7 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
         {
             try
             {
-                var mainPlayer = Memory.ReadPtr(this + Offsets.ClientLocalGameWorld.MainPlayer, false);
+                var mainPlayer = Memory.ReadPtr(this + Offsets.GameWorld.MainPlayer, false);
                 ArgumentOutOfRangeException.ThrowIfNotEqual(mainPlayer, _rgtPlayers.LocalPlayer, nameof(mainPlayer));
                 return _rgtPlayers.GetPlayerCount() > 0;
             }
@@ -269,6 +283,10 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
             }
 
             using var scatter = Memory.CreateScatter(VmmFlags.NOCACHE);
+            if (MemDMA.CameraManager != null && localPlayer != null)
+            {
+                MemDMA.CameraManager.OnRealtimeLoop(scatter, localPlayer);
+            }
             foreach (var player in players)
             {
                 player.OnRealtimeLoop(scatter);
@@ -318,6 +336,32 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
 
         #endregion
 
+        #region MemWrites Thread T4
+
+        private void MemWritesWorker_PerformWork(object sender, WorkerThreadArgs e)
+        {
+            try
+            {
+                if (!App.Config.MemWrites.Enabled)
+                {
+                    Thread.Sleep(100);
+                    return;
+                }
+
+                var localPlayer = LocalPlayer;
+                if (localPlayer is null)
+                    return;
+
+                _memWritesManager.Apply(localPlayer);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogDebug($"[MemWritesWorker] Error: {ex}");
+            }
+        }
+
+        #endregion
+
         #region Explosives Thread T3
 
         /// <summary>
@@ -339,7 +383,7 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
         {
             try
             {
-                var btrController = Memory.ReadPtr(this + Offsets.ClientLocalGameWorld.BtrController);
+                var btrController = Memory.ReadPtr(this + Offsets.GameWorld.BtrController);
                 var btrView = Memory.ReadPtr(btrController + Offsets.BtrController.BtrView);
                 var btrTurretView = Memory.ReadPtr(btrView + Offsets.BTRView.turret);
                 var btrOperator = Memory.ReadPtr(btrTurretView + Offsets.BTRTurretView.AttachedBot);
@@ -364,6 +408,7 @@ namespace LoneEftDmaRadar.Tarkov.GameWorld
                 _t1?.Dispose();
                 _t2?.Dispose();
                 _t3?.Dispose();
+                _t4?.Dispose();
             }
         }
 

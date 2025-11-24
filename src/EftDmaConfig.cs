@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Lone EFT DMA Radar
  * Brought to you by Lone (Lone DMA)
  * 
@@ -32,6 +32,8 @@ using LoneEftDmaRadar.Misc.JSON;
 using LoneEftDmaRadar.UI.ColorPicker;
 using LoneEftDmaRadar.UI.Data;
 using LoneEftDmaRadar.UI.Loot;
+using LoneEftDmaRadar.Tarkov.Unity.Structures;
+using Size = System.Windows.Size;
 using System.Collections.ObjectModel;
 using VmmSharpEx.Extensions.Input;
 
@@ -129,6 +131,20 @@ namespace LoneEftDmaRadar
         [JsonInclude]
         [JsonPropertyName("infoWidget")]
         public InfoWidgetConfig InfoWidget { get; private set; } = new();
+
+        /// <summary>
+        /// Settings for Device Aimbot (DeviceAimbot/KMBox).
+        /// </summary>
+        [JsonPropertyName("device")]
+        [JsonInclude]
+        public DeviceAimbotConfig Device { get; private set; } = new();
+
+        /// <summary>
+        /// Settings for memory write based features.
+        /// </summary>
+        [JsonPropertyName("memWrites")]
+        [JsonInclude]
+        public MemWritesConfig MemWrites { get; private set; } = new();
 
         /// <summary>
         /// Player Watchlist Collection.
@@ -481,6 +497,11 @@ namespace LoneEftDmaRadar
         /// </summary>
         [JsonPropertyName("windowSize")]
         public Size WindowSize { get; set; } = new(1280, 720);
+        /// <summary>
+        /// Preferred rendering resolution for ESP/aim helpers.
+        /// </summary>
+        [JsonPropertyName("resolution")]
+        public Size Resolution { get; set; } = new(1920, 1080);
 
         /// <summary>
         /// Window is maximized.
@@ -648,6 +669,12 @@ namespace LoneEftDmaRadar
         public bool EspLoot { get; set; } = true;
 
         /// <summary>
+        /// Show quest items on ESP.
+        /// </summary>
+        [JsonPropertyName("espQuestLoot")]
+        public bool EspQuestLoot { get; set; } = true;
+
+        /// <summary>
         /// Show Loot Prices on ESP.
         /// </summary>
         [JsonPropertyName("espLootPrice")]
@@ -743,6 +770,39 @@ namespace LoneEftDmaRadar
         [JsonPropertyName("espMaxFPS")]
         public int EspMaxFPS { get; set; } = 0;
 
+        // ESP Colors (independent from radar colors)
+        [JsonPropertyName("espColorPlayers")]
+        public string EspColorPlayers { get; set; } = "#FFFFFFFF";
+
+        [JsonPropertyName("espColorAI")]
+        public string EspColorAI { get; set; } = "#FFFFA500";
+
+        [JsonPropertyName("espColorRaiders")]
+        public string EspColorRaiders { get; set; } = "#FFFFC70F";
+
+        [JsonPropertyName("espColorBosses")]
+        public string EspColorBosses { get; set; } = "#FFFF00FF";
+
+        [JsonPropertyName("espColorLoot")]
+        public string EspColorLoot { get; set; } = "#FFD0D0D0";
+
+        [JsonPropertyName("espColorExfil")]
+        public string EspColorExfil { get; set; } = "#FF7FFFD4";
+
+        [JsonPropertyName("espColorCrosshair")]
+        public string EspColorCrosshair { get; set; } = "#FFFFFFFF";
+
+        /// <summary>
+        /// ESP faction color for BEAR PMCs (ESP only, not radar).
+        /// </summary>
+        [JsonPropertyName("espColorFactionBear")]
+        public string EspColorFactionBear { get; set; } = "#FFFF0000";
+        /// <summary>
+        /// ESP faction color for USEC PMCs (ESP only, not radar).
+        /// </summary>
+        [JsonPropertyName("espColorFactionUsec")]
+        public string EspColorFactionUsec { get; set; } = "#FF0000FF";
+
         /// <summary>
         /// Radar Max FPS (0 = unlimited). Lowering this can free headroom for ESP.
         /// </summary>
@@ -813,6 +873,12 @@ namespace LoneEftDmaRadar
         public bool Enabled { get; set; } = true;
 
         /// <summary>
+        /// Show quest items on map/ESP.
+        /// </summary>
+        [JsonPropertyName("showQuestItems")]
+        public bool ShowQuestItems { get; set; } = true;
+
+        /// <summary>
         /// Shows bodies/corpses on map.
         /// </summary>
         [JsonPropertyName("hideCorpses")]
@@ -877,6 +943,65 @@ namespace LoneEftDmaRadar
         [JsonInclude]
         [JsonConverter(typeof(CaseInsensitiveConcurrentDictionaryConverter<byte>))]
         public ConcurrentDictionary<string, byte> Selected { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Settings for device aimbot integration (DeviceAimbot/KMBox).
+    /// </summary>
+    public sealed class DeviceAimbotConfig
+    {
+        public bool Enabled { get; set; }
+        public bool AutoConnect { get; set; }
+        public string LastComPort { get; set; }
+
+        // Debug
+        public bool ShowDebug { get; set; } = true;
+
+        /// <summary>
+        /// Smoothing factor for DeviceAimbot device aim. 1 = instant, higher = slower/smoother.
+        /// </summary>
+        public float Smoothing { get; set; } = 1.0f;
+
+        // Targeting
+        public Bones TargetBone { get; set; } = Bones.HumanHead;
+        public float FOV { get; set; } = 90f;
+        public float MaxDistance { get; set; } = 300f;
+        public TargetingMode Targeting { get; set; } = TargetingMode.ClosestToCrosshair;
+        public bool EnablePrediction { get; set; } = true;
+
+        // Target Filters
+        public bool TargetPMC { get; set; } = true;
+        public bool TargetPlayerScav { get; set; } = true;
+        public bool TargetAIScav { get; set; } = true;
+        public bool TargetBoss { get; set; } = true;
+        public bool TargetRaider { get; set; } = true;
+
+        // KMBox NET (LAN) device support
+        public bool UseKmBoxNet { get; set; } = false;
+        public string KmBoxNetIp { get; set; } = "192.168.2.4";
+        public int KmBoxNetPort { get; set; } = 8888;
+        public string KmBoxNetMac { get; set; } = "";
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public enum TargetingMode
+        {
+            ClosestToCrosshair,
+            ClosestDistance
+        }
+    }
+
+    /// <summary>
+    /// Settings for memory write based features.
+    /// </summary>
+    public sealed class MemWritesConfig
+    {
+        public bool Enabled { get; set; }
+        public bool NoRecoilEnabled { get; set; }
+        public float NoRecoilAmount { get; set; } = 80f;
+        public float NoSwayAmount { get; set; } = 80f;
+        public bool InfiniteStaminaEnabled { get; set; }
+        public bool MemoryAimEnabled { get; set; }
+        public Bones MemoryAimTargetBone { get; set; } = Bones.HumanHead;
     }
 
     /// <summary>
